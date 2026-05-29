@@ -20,3 +20,9 @@ make
 ```bash
 make test
 ```
+
+## Documentation
+
+- [Flowcode documentation](./docs/README.md)
+- [User manual](./docs/user-manual.md)
+- [Tutorials](./docs/tutorials.md)

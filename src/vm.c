@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define FC_MAX_NAME_LENGTH 256
+#define FC_MAX_FRAME_POOL 256
 
 typedef struct {
     fc_token_t *tokens;
@@ -16,7 +17,7 @@ struct fc_vm_s {
     fc_state_store_t *state;
     fc_plugin_registry_t *plugins;
     fc_scheduler_t *scheduler;
-    fc_frame_t frame_pool[256];
+    fc_frame_t frame_pool[FC_MAX_FRAME_POOL];
     uint32_t frame_pool_used;
     fc_token_arena_t arena;
 };
@@ -52,7 +53,6 @@ static int exec_call(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame
 }
 
 static int exec_transform(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
-    fc_token_t *out;
     /* If a transform plugin is named, attempt to resolve and invoke it. */
     if (ins->arg_length > 0) {
         char name[FC_MAX_NAME_LENGTH];
@@ -63,6 +63,7 @@ static int exec_transform(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *
         fn = fc_plugins_resolve(vm->plugins, name);
         if (fn) {
             fc_token_t result;
+            fc_token_t *out;
             memset(&result, 0, sizeof(result));
             if (fn(frame->token, &result) != FC_PLUGIN_OK) return -1;
             out = arena_token(vm);
@@ -90,9 +91,8 @@ static int exec_store(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *fram
 
 static int exec_route(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
     uint32_t target;
-    (void)frame;
-    if (ins->arg_length != sizeof(uint32_t)) return -1;
-    memcpy(&target, &vm->program->arg_blob[ins->arg_offset], sizeof(uint32_t));
+    if (ins->arg_length != sizeof(target)) return -1;
+    memcpy(&target, &vm->program->arg_blob[ins->arg_offset], sizeof(target));
     if (target >= vm->program->instruction_count) return -1;
     frame->ip = target;
     return 1;
@@ -100,8 +100,8 @@ static int exec_route(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *fram
 
 static int exec_loop(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
     uint32_t target;
-    if (ins->arg_length != sizeof(uint32_t)) return -1;
-    memcpy(&target, &vm->program->arg_blob[ins->arg_offset], sizeof(uint32_t));
+    if (ins->arg_length != sizeof(target)) return -1;
+    memcpy(&target, &vm->program->arg_blob[ins->arg_offset], sizeof(target));
     if (target >= vm->program->instruction_count) return -1;
     frame->ip = target;
     return 1;
@@ -128,7 +128,9 @@ fc_vm_t *fc_vm_create(fc_program_t *program, fc_state_store_t *state, fc_plugin_
 void fc_vm_destroy(fc_vm_t *vm) {
     if (!vm) return;
     fc_scheduler_destroy(vm->scheduler);
+    vm->scheduler = NULL;
     fc_free(vm->arena.tokens);
+    vm->arena.tokens = NULL;
     fc_free(vm);
 }
 

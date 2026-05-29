@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+#define FC_MAX_NAME_LENGTH 256
+
 typedef struct {
     fc_token_t *tokens;
     uint32_t capacity;
@@ -36,7 +38,7 @@ static int exec_emit(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame
 }
 
 static int exec_call(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
-    char name[256];
+    char name[FC_MAX_NAME_LENGTH];
     fc_plugin_call_fn fn;
     fc_token_t out;
     if (ins->arg_length == 0 || ins->arg_length >= sizeof(name)) return -1;
@@ -51,10 +53,9 @@ static int exec_call(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame
 
 static int exec_transform(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
     fc_token_t *out;
-    (void)ins;
     /* If a transform plugin is named, attempt to resolve and invoke it. */
     if (ins->arg_length > 0) {
-        char name[256];
+        char name[FC_MAX_NAME_LENGTH];
         fc_plugin_call_fn fn;
         if (ins->arg_length >= sizeof(name)) return -1;
         memcpy(name, &vm->program->arg_blob[ins->arg_offset], ins->arg_length);
@@ -76,7 +77,7 @@ static int exec_transform(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *
 }
 
 static int exec_store(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
-    char key[256];
+    char key[FC_MAX_NAME_LENGTH];
     if (!frame->token || !frame->token->value) return -1;
     /* Use the instruction argument as the store key when provided. */
     if (ins->arg_length > 0 && ins->arg_length < sizeof(key)) {

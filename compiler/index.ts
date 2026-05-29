@@ -71,9 +71,9 @@ export function compileFlowcode(source: string): Buffer {
       argOffset = pushArg(instructions, args, argOffset, OPCODES.emit, payload);
     } else if (line.startsWith('transform')) {
       // The transform function name follows the keyword on the same line.
-      const funcName = line.replace(/^transform\s*/, '');
-      if (funcName) {
-        const payload = Buffer.from(funcName, 'utf8');
+      const match = line.match(/^transform\s+([\w.]+)$/);
+      if (match) {
+        const payload = Buffer.from(match[1], 'utf8');
         argOffset = pushArg(instructions, args, argOffset, OPCODES.transform, payload);
       } else {
         instructions.push({ opcode: OPCODES.transform, argOffset: 0, argLength: 0 });

@@ -1,13 +1,13 @@
 # flowcode
 
-Minimal Flowcode runtime/compiler scaffold implementing PRD v1.0 foundations:
+Flowcode runtime and compiler for executing event-driven workflow programs:
 
-- C runtime with bytecode loader/validator and VM skeleton
+- C runtime with bytecode loader, validator, and virtual machine
 - Deterministic FIFO scheduler
-- In-memory state store with TTL
-- Plugin registry/ABI loader (dlopen/LoadLibrary)
-- CLI MVP: `flowcode run file.fcb`
-- TypeScript compiler skeleton: `compiler/index.ts`
+- In-memory state store with TTL expiry
+- Plugin registry with dynamic loading (dlopen/LoadLibrary)
+- CLI: `flowcode run file.fcb`
+- TypeScript compiler: `compiler/index.ts`
 
 ## Build
 

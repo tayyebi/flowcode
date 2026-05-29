@@ -49,9 +49,41 @@ static int exec_call(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame
     return 0;
 }
 
-static int exec_store(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
+static int exec_transform(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
+    fc_token_t *out;
     (void)ins;
+    /* If a transform plugin is named, attempt to resolve and invoke it. */
+    if (ins->arg_length > 0) {
+        char name[256];
+        fc_plugin_call_fn fn;
+        if (ins->arg_length >= sizeof(name)) return -1;
+        memcpy(name, &vm->program->arg_blob[ins->arg_offset], ins->arg_length);
+        name[ins->arg_length] = '\0';
+        fn = fc_plugins_resolve(vm->plugins, name);
+        if (fn) {
+            fc_token_t result;
+            memset(&result, 0, sizeof(result));
+            if (fn(frame->token, &result) != FC_PLUGIN_OK) return -1;
+            out = arena_token(vm);
+            if (!out) return -1;
+            *out = result;
+            frame->token = out;
+            return 0;
+        }
+    }
+    /* Identity pass-through: propagate the current token unchanged. */
+    return 0;
+}
+
+static int exec_store(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
+    char key[256];
     if (!frame->token || !frame->token->value) return -1;
+    /* Use the instruction argument as the store key when provided. */
+    if (ins->arg_length > 0 && ins->arg_length < sizeof(key)) {
+        memcpy(key, &vm->program->arg_blob[ins->arg_offset], ins->arg_length);
+        key[ins->arg_length] = '\0';
+        return fc_state_set(vm->state, key, frame->token->value, frame->token->value_size, 0);
+    }
     return fc_state_set(vm->state, "last_token", frame->token->value, frame->token->value_size, 0);
 }
 
@@ -121,7 +153,7 @@ int fc_vm_run(fc_vm_t *vm) {
                 status = exec_call(vm, ins, &frame);
                 break;
             case FC_OP_TRANSFORM:
-                status = 0;
+                status = exec_transform(vm, ins, &frame);
                 break;
             case FC_OP_ROUTE:
                 status = exec_route(vm, ins, &frame);

@@ -24,36 +24,100 @@ function encodeU32(v: number): Buffer {
   return b;
 }
 
+/**
+ * Extract a named parameter value from the lines following a directive.
+ * Scans forward from `start` until `end` or a blank/structural line,
+ * looking for `key = <value>`.  Returns the raw value string or null.
+ */
+function extractParam(lines: string[], start: number, key: string): string | null {
+  for (let i = start; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l || l === 'end' || l.endsWith(':') || /^\w+\s*->$/.test(l)) break;
+    const m = l.match(new RegExp(`^${key}\\s*=\\s*(.+)$`));
+    if (m) return m[1].replace(/^"(.*)"$/, '$1');
+  }
+  return null;
+}
+
+function pushArg(
+  instructions: Instruction[],
+  args: Buffer[],
+  argOffset: number,
+  opcode: number,
+  payload: Buffer,
+): number {
+  instructions.push({ opcode, argOffset, argLength: payload.length });
+  args.push(payload);
+  return argOffset + payload.length;
+}
+
 export function compileFlowcode(source: string): Buffer {
   const lines = source.split(/\r?\n/).map((l) => l.trim());
   const instructions: Instruction[] = [];
   const args: Buffer[] = [];
   let argOffset = 0;
 
-  for (const line of lines) {
-    // Ignore structural markers; only opcode-carrying lines emit instructions in this MVP parser.
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Skip structural markers, blank lines, and parameter lines (key = value).
     if (!line || line.endsWith(':') || line === 'end' || /^\w+\s*->$/.test(line)) continue;
+    if (/^\w+\s*=\s*.+$/.test(line)) continue;
 
     if (line.startsWith('emit')) {
-      const payload = Buffer.from('complete', 'utf8');
-      instructions.push({ opcode: OPCODES.emit, argOffset, argLength: payload.length });
-      args.push(payload);
-      argOffset += payload.length;
+      // Parse the value parameter from subsequent lines; fall back to "complete".
+      const value = extractParam(lines, i + 1, 'value') ?? 'complete';
+      const payload = Buffer.from(value, 'utf8');
+      argOffset = pushArg(instructions, args, argOffset, OPCODES.emit, payload);
     } else if (line.startsWith('transform')) {
-      instructions.push({ opcode: OPCODES.transform, argOffset: 0, argLength: 0 });
+      // The transform function name follows the keyword on the same line.
+      const funcName = line.replace(/^transform\s*/, '');
+      if (funcName) {
+        const payload = Buffer.from(funcName, 'utf8');
+        argOffset = pushArg(instructions, args, argOffset, OPCODES.transform, payload);
+      } else {
+        instructions.push({ opcode: OPCODES.transform, argOffset: 0, argLength: 0 });
+      }
     } else if (line.startsWith('store')) {
-      instructions.push({ opcode: OPCODES.store, argOffset: 0, argLength: 0 });
+      // Parse the key parameter from subsequent lines.
+      const key = extractParam(lines, i + 1, 'key');
+      if (key) {
+        const payload = Buffer.from(key, 'utf8');
+        argOffset = pushArg(instructions, args, argOffset, OPCODES.store, payload);
+      } else {
+        instructions.push({ opcode: OPCODES.store, argOffset: 0, argLength: 0 });
+      }
+    } else if (line.startsWith('loop')) {
+      // Encode loop target as the next sequential instruction index.
+      const loopArg = encodeU32(instructions.length + 1);
+      argOffset = pushArg(instructions, args, argOffset, OPCODES.loop, loopArg);
+    } else if (line.startsWith('await')) {
+      instructions.push({ opcode: OPCODES.await, argOffset: 0, argLength: 0 });
     } else if (line.startsWith('match')) {
-      // MVP route target: next sequential instruction after this route opcode.
+      // Route target: next sequential instruction after this route opcode.
       const routeArg = encodeU32(instructions.length + 1);
-      instructions.push({ opcode: OPCODES.route, argOffset, argLength: routeArg.length });
-      args.push(routeArg);
-      argOffset += routeArg.length;
+      argOffset = pushArg(instructions, args, argOffset, OPCODES.route, routeArg);
     } else if (line.startsWith('http.') || line.startsWith('webhook')) {
       const targetName = Buffer.from(line.split(/\s+/)[0], 'utf8');
-      instructions.push({ opcode: OPCODES.call, argOffset, argLength: targetName.length });
-      args.push(targetName);
-      argOffset += targetName.length;
+      argOffset = pushArg(instructions, args, argOffset, OPCODES.call, targetName);
+    } else if (
+      line.startsWith('step ') ||
+      line.startsWith('workflow') ||
+      line.startsWith('trigger') ||
+      line.startsWith('use ') ||
+      line.startsWith('parallel') ||
+      line === 'stop' ||
+      line.startsWith('email.') ||
+      line.startsWith('crm.') ||
+      line.startsWith('storage.')
+    ) {
+      // Known structural or plugin-call keywords handled elsewhere; skip silently.
+      if (line.startsWith('email.') || line.startsWith('crm.') || line.startsWith('storage.')) {
+        const targetName = Buffer.from(line.split(/\s+/)[0], 'utf8');
+        argOffset = pushArg(instructions, args, argOffset, OPCODES.call, targetName);
+      }
+    } else {
+      process.stderr.write(`warning: unrecognized line ${i + 1}: ${line}\n`);
     }
   }
 

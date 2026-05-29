@@ -19,6 +19,16 @@ If you are new to the repository, start here:
 4. Start with `samples/customer-onboarding/` for a complete example that covers validation, human review, branching, loops, parallel work, state storage, and event emission.
 5. Run compiled bytecode locally with `./flowcode run <file.fcb>`.
 
+## User onboarding
+
+If you are new to the repository, start here:
+
+1. Build the runtime with `make`.
+2. Run the existing test suite with `make test`.
+3. Review the sample workflows under `samples/`.
+4. Start with `samples/customer-onboarding/` for a complete example that covers validation, human review, branching, loops, parallel work, state storage, and event emission.
+5. Run compiled bytecode locally with `./flowcode run <file.fcb>`.
+
 ## Build
 
 ```bash
@@ -55,4 +65,8 @@ make test-e2e
 
 ### Extend the compiler
 
+<<<<<<< HEAD
 The compiler entry point lives at `compiler/index.ts` and handles bytecode generation for the Flowcode language.
+=======
+The compiler entry point lives at `compiler/index.ts` and currently provides the MVP bytecode generation scaffold.
+>>>>>>> origin/main

@@ -1,11 +1,7 @@
 {
   "name": "flowcode",
   "version": "1.0.0",
-<<<<<<< HEAD
   "description": "Flowcode runtime and compiler for executing event-driven workflow programs",
-=======
-  "description": "Minimal Flowcode runtime/compiler scaffold implementing PRD v1.0 foundations:",
->>>>>>> origin/main
   "main": "index.js",
   "directories": {
     "test": "tests"

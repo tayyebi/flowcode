@@ -29,8 +29,8 @@ static void write_sample(const char *path) {
 
 int main(void) {
     int rc;
-    write_sample("/tmp/workspace/tayyebi/flowcode/tests/cli_sample.fcb");
-    rc = system("/tmp/workspace/tayyebi/flowcode/flowcode run /tmp/workspace/tayyebi/flowcode/tests/cli_sample.fcb");
+    write_sample("tests/cli_sample.fcb");
+    rc = system("./flowcode run tests/cli_sample.fcb");
     assert(rc == 0);
     return 0;
 }

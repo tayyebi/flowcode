@@ -67,10 +67,9 @@ static int exec_route(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *fram
 
 static int exec_loop(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
     uint32_t target;
-    (void)vm;
     if (ins->arg_length != sizeof(uint32_t)) return -1;
     memcpy(&target, &vm->program->arg_blob[ins->arg_offset], sizeof(uint32_t));
-    if (target >= frame->program->instruction_count) return -1;
+    if (target >= vm->program->instruction_count) return -1;
     frame->ip = target;
     return 1;
 }

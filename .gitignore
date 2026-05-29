@@ -1,0 +1,4 @@
+flowcode
+tests/test_bytecode
+tests/test_cli_run
+tests/*.fcb

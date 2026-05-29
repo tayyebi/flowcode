@@ -29,8 +29,8 @@ static void write_sample(const char *path) {
 
 int main(void) {
     fc_program_t p;
-    write_sample("/tmp/workspace/tayyebi/flowcode/tests/sample.fcb");
-    assert(fc_program_load_file("/tmp/workspace/tayyebi/flowcode/tests/sample.fcb", &p) == 0);
+    write_sample("tests/sample.fcb");
+    assert(fc_program_load_file("tests/sample.fcb", &p) == 0);
     assert(p.instruction_count == 2);
     assert(p.instructions[0].opcode == FC_OP_EMIT);
     assert(p.arg_blob_size == 5);

@@ -31,7 +31,8 @@ export function compileFlowcode(source: string): Buffer {
   let argOffset = 0;
 
   for (const line of lines) {
-    if (!line || line.endsWith(':') || line === 'end' || line.includes('->')) continue;
+    // Ignore structural markers; only opcode-carrying lines emit instructions in this MVP parser.
+    if (!line || line.endsWith(':') || line === 'end' || /^\w+\s*->$/.test(line)) continue;
 
     if (line.startsWith('emit')) {
       const payload = Buffer.from('complete', 'utf8');
@@ -43,12 +44,16 @@ export function compileFlowcode(source: string): Buffer {
     } else if (line.startsWith('store')) {
       instructions.push({ opcode: OPCODES.store, argOffset: 0, argLength: 0 });
     } else if (line.startsWith('match')) {
+      // MVP route target: next sequential instruction after this route opcode.
       const routeArg = encodeU32(instructions.length + 1);
       instructions.push({ opcode: OPCODES.route, argOffset, argLength: routeArg.length });
       args.push(routeArg);
       argOffset += routeArg.length;
     } else if (line.startsWith('http.') || line.startsWith('webhook')) {
-      instructions.push({ opcode: OPCODES.call, argOffset: 0, argLength: 0 });
+      const targetName = Buffer.from(line.split(/\s+/)[0], 'utf8');
+      instructions.push({ opcode: OPCODES.call, argOffset, argLength: targetName.length });
+      args.push(targetName);
+      argOffset += targetName.length;
     }
   }
 

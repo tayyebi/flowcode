@@ -55,6 +55,10 @@ void fc_plugins_destroy(fc_plugin_registry_t *registry) {
 int fc_plugins_load(fc_plugin_registry_t *registry, const char *path) {
     void *handle;
     void *symbol;
+    union {
+        void *obj;
+        fc_plugin_init_fn fn;
+    } init_conv;
     fc_plugin_init_fn init_fn;
     fc_plugin_descriptor_t *desc;
     uint32_t i;
@@ -66,8 +70,10 @@ int fc_plugins_load(fc_plugin_registry_t *registry, const char *path) {
 #endif
     if (!handle) return -1;
 
+    _Static_assert(sizeof(void *) == sizeof(fc_plugin_init_fn), "function pointer size mismatch");
     symbol = FC_DLSYM(handle, "fc_plugin_init");
-    memcpy(&init_fn, &symbol, sizeof(init_fn));
+    init_conv.obj = symbol;
+    init_fn = init_conv.fn;
     if (!init_fn) return -1;
     desc = init_fn();
     if (!desc || !desc->exports) return -1;

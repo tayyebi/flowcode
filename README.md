@@ -31,6 +31,14 @@ make
 make test
 ```
 
+## E2E Test
+
+Runs end-to-end tests covering the full pipeline (compiler → bytecode → runtime), CLI error handling, and VM execution with various instruction types:
+
+```bash
+make test-e2e
+```
+
 ## How to
 
 ### Explore a workflow example

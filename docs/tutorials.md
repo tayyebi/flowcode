@@ -14,7 +14,7 @@ For each tutorial:
 
 ## Tutorial 1: Build a customer onboarding flow
 
-**Sample:** `/tmp/workspace/tayyebi/flowcode/samples/customer-onboarding/onboarding.fc`
+**Sample:** `samples/customer-onboarding/onboarding.fc`
 
 ### Goal
 
@@ -52,7 +52,7 @@ This is the best starting point if you want to learn the general Flowcode struct
 
 ## Tutorial 2: Build an approval workflow with SLAs
 
-**Sample:** `/tmp/workspace/tayyebi/flowcode/samples/approval-chain-escalation/approval.fc`
+**Sample:** `samples/approval-chain-escalation/approval.fc`
 
 ### Goal
 
@@ -92,7 +92,7 @@ Use this pattern when your workflow must combine persistence, human decisions, d
 
 ## Tutorial 3: Build a scheduled SaaS sync workflow
 
-**Sample:** `/tmp/workspace/tayyebi/flowcode/samples/saas-data-sync-engine/sync.fc`
+**Sample:** `samples/saas-data-sync-engine/sync.fc`
 
 ### Goal
 
@@ -141,8 +141,8 @@ This tutorial is the clearest example of Flowcode for batch jobs, loop-heavy log
 
 After these tutorials, explore:
 
-- `/tmp/workspace/tayyebi/flowcode/samples/ecommerce-order-pipeline/order.fc`
-- `/tmp/workspace/tayyebi/flowcode/samples/iot-streaming-automation/streaming.fc`
-- `/tmp/workspace/tayyebi/flowcode/samples/multi-agent-content-pipeline/pipeline.fc`
+- `samples/ecommerce-order-pipeline/order.fc`
+- `samples/iot-streaming-automation/streaming.fc`
+- `samples/multi-agent-content-pipeline/pipeline.fc`
 
 They add more patterns for risk routing, streaming automation, AI orchestration, and multi-system workflows.

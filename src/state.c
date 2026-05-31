@@ -1,5 +1,6 @@
 #include "flowcode.h"
 #include "fc_memory.h"
+#include "fc_log.h"
 
 #include <string.h>
 #include <time.h>
@@ -54,7 +55,10 @@ int fc_state_set(fc_state_store_t *store, const char *key, const void *value, ui
     uint32_t i;
     char *new_key;
     void *new_value;
-    if (!store || !key || (!value && size > 0)) return -1;
+    if (!store || !key || (!value && size > 0)) {
+        fc_log(FC_LOG_ERROR, "state_set called with invalid arguments");
+        return -1;
+    }
 
     for (i = 0; i < store->capacity; ++i) {
         if (store->entries[i].in_use && strcmp(store->entries[i].key, key) == 0) {
@@ -100,6 +104,7 @@ int fc_state_get(fc_state_store_t *store, const char *key, const void **value, u
     for (i = 0; i < store->capacity; ++i) {
         if (store->entries[i].in_use && strcmp(store->entries[i].key, key) == 0) {
             if (store->entries[i].expires_at && store->entries[i].expires_at <= now_seconds()) {
+                fc_log(FC_LOG_INFO, "state key expired: %s", store->entries[i].key);
                 fc_free(store->entries[i].key);
                 fc_free(store->entries[i].value);
                 memset(&store->entries[i], 0, sizeof(store->entries[i]));

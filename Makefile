@@ -7,7 +7,7 @@ else
   LDLIBS := -ldl
 endif
 
-SRC = src/memory.c src/bytecode.c src/state.c src/scheduler.c src/plugin.c src/vm.c
+SRC = src/memory.c src/log.c src/error.c src/bytecode.c src/state.c src/scheduler.c src/plugin.c src/vm.c
 CLI = src/cli.c
 
 all: flowcode

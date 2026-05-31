@@ -1,5 +1,6 @@
 #include "flowcode.h"
 #include "fc_memory.h"
+#include "fc_log.h"
 
 #include <string.h>
 
@@ -68,15 +69,24 @@ int fc_plugins_load(fc_plugin_registry_t *registry, const char *path) {
 #else
     handle = dlopen(path, RTLD_NOW);
 #endif
-    if (!handle) return -1;
+    if (!handle) {
+        fc_log(FC_LOG_ERROR, "failed to load plugin library: %s", path);
+        return -1;
+    }
 
     _Static_assert(sizeof(void *) == sizeof(fc_plugin_init_fn), "function pointer size mismatch");
     symbol = FC_DLSYM(handle, "fc_plugin_init");
     init_conv.obj = symbol;
     init_fn = init_conv.fn;
-    if (!init_fn) return -1;
+    if (!init_fn) {
+        fc_log(FC_LOG_ERROR, "plugin missing fc_plugin_init symbol: %s", path);
+        return -1;
+    }
     desc = init_fn();
-    if (!desc || !desc->exports) return -1;
+    if (!desc || !desc->exports) {
+        fc_log(FC_LOG_ERROR, "plugin returned invalid descriptor: %s", path);
+        return -1;
+    }
 
     if (ensure_capacity(registry, desc->export_count) != 0) return -1;
 

@@ -8,7 +8,7 @@ FAIL=0
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 FLOWCODE="$ROOT_DIR/flowcode"
-COMPILER="$ROOT_DIR/dist/compiler/index.js"
+COMPILER="$ROOT_DIR/fcc"
 TMP_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -45,11 +45,11 @@ write_fcb() {
     printf '%b' "$@" > "$path"
 }
 
-# Helper: compile a .fc file with the TypeScript compiler
+# Helper: compile a .fc file with the C compiler
 compile_fc() {
     local input="$1"
     local output="$2"
-    node "$COMPILER" "$input" "$output"
+    "$COMPILER" "$input" "$output"
 }
 
 printf "=== Flowcode E2E Tests ===\n\n"
@@ -239,17 +239,17 @@ printf "%s\n" "-- Compiler error handling --"
 
 set +e
 # Test: compiler with missing arguments
-node "$COMPILER" > /dev/null 2>&1
+"$COMPILER" > /dev/null 2>&1
 assert_exit 1 $? "compiler exits 1 with no arguments"
 
 # Test: compiler with only input arg
-node "$COMPILER" "$TMP_DIR/emit_only.fc" > /dev/null 2>&1
+"$COMPILER" "$TMP_DIR/emit_only.fc" > /dev/null 2>&1
 assert_exit 1 $? "compiler exits 1 with missing output argument"
 set -e
 
 # Test: compiler with non-existent input file
 set +e
-node "$COMPILER" "$TMP_DIR/nonexistent.fc" "$TMP_DIR/out.fcb" > /dev/null 2>&1
+"$COMPILER" "$TMP_DIR/nonexistent.fc" "$TMP_DIR/out.fcb" > /dev/null 2>&1
 assert_exit 1 $? "compiler exits 1 with non-existent input file"
 set -e
 

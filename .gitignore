@@ -1,10 +1,10 @@
 flowcode
+fcc
 tests/test_bytecode
 tests/test_cli_run
+tests/test_error_handling
 tests/test_e2e_emit_store
 tests/test_e2e_transform
 tests/test_e2e_route
 tests/test_e2e_invalid_opcode
 tests/*.fcb
-dist/
-node_modules/

@@ -264,6 +264,64 @@ fi
 
 printf "\n"
 
+# ---------- Section 5: Compiler semantic validation ----------
+printf "%s\n" "-- Compiler semantic validation --"
+
+# Test: duplicate step names produce an error diagnostic
+cat > "$TMP_DIR/dup_steps.fc" <<'EOF'
+workflow: DupSteps
+
+step alpha:
+    emit
+        value = "one"
+end
+
+step alpha:
+    emit
+        value = "two"
+end
+
+end
+EOF
+
+set +e
+DIAG=$(compile_fc "$TMP_DIR/dup_steps.fc" "$TMP_DIR/dup_steps.fcb" 2>&1)
+RC=$?
+set -e
+if echo "$DIAG" | grep -qi "duplicate step"; then
+    pass "compiler detects duplicate step names"
+else
+    fail "compiler should detect duplicate step names"
+fi
+
+# Test: on_error, retry, timeout, compensate are recognized (no unrecognized warnings)
+cat > "$TMP_DIR/error_constructs.fc" <<'EOF'
+workflow: ErrorHandling
+
+step data:
+    emit
+        value = "payload"
+end
+
+step action:
+    http.get
+    on_error retry
+end
+
+end
+EOF
+
+set +e
+DIAG=$(compile_fc "$TMP_DIR/error_constructs.fc" "$TMP_DIR/error_constructs.fcb" 2>&1)
+set -e
+if echo "$DIAG" | grep -qi "unrecognized.*on_error\|unrecognized.*retry\|unrecognized.*timeout\|unrecognized.*compensate"; then
+    fail "compiler should recognize error-handling constructs"
+else
+    pass "compiler recognizes on_error/retry/timeout/compensate constructs"
+fi
+
+printf "\n"
+
 # ---------- Summary ----------
 TOTAL=$((PASS + FAIL))
 printf "=== Results: %d/%d passed ===\n" "$PASS" "$TOTAL"

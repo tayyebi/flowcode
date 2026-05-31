@@ -1,5 +1,6 @@
 #include "flowcode.h"
 #include "fc_memory.h"
+#include "fc_log.h"
 
 #include <string.h>
 
@@ -30,7 +31,20 @@ void fc_scheduler_destroy(fc_scheduler_t *scheduler) {
 }
 
 int fc_scheduler_enqueue(fc_scheduler_t *scheduler, const fc_frame_t *frame) {
-    if (!scheduler || !frame || scheduler->count == scheduler->capacity) return -1;
+    if (!scheduler || !frame) {
+        fc_log(FC_LOG_ERROR, "scheduler enqueue called with NULL argument");
+        return -1;
+    }
+    if (scheduler->count == scheduler->capacity) {
+        fc_log(FC_LOG_ERROR, "scheduler queue full (%u/%u)", scheduler->count, scheduler->capacity);
+        return -1;
+    }
+    /* warn when approaching capacity (>75%) */
+    if (scheduler->count > 0 && scheduler->count * 4u >= scheduler->capacity * 3u) {
+        fc_log(FC_LOG_WARN, "scheduler queue at %u/%u (%.0f%% full)",
+               scheduler->count, scheduler->capacity,
+               (double)scheduler->count / scheduler->capacity * 100.0);
+    }
     scheduler->queue[scheduler->tail] = *frame;
     scheduler->tail = (scheduler->tail + 1u) % scheduler->capacity;
     scheduler->count += 1;

@@ -3,13 +3,13 @@
 Flowcode runtime and compiler for executing event-driven workflow programs:
 
 - C runtime with bytecode loader, validator, and virtual machine
+- C compiler: `fcc <input.fc> <output.fcb>`
 - Deterministic FIFO scheduler
 - In-memory state store with TTL expiry
 - Plugin registry with dynamic loading (dlopen/LoadLibrary)
 - Structured error handling with inspectable error codes and error-as-state
 - Leveled logging (DEBUG/INFO/WARN/ERROR) to stderr
 - CLI: `flowcode run file.fcb`
-- TypeScript compiler: `compiler/index.ts`
 
 ## User onboarding
 
@@ -107,4 +107,4 @@ The compiler performs semantic validation and reports structured diagnostics:
 
 ### Extend the compiler
 
-The compiler entry point lives at `compiler/index.ts` and handles bytecode generation for the Flowcode language.
+The compiler entry point lives at `src/compiler.c` and handles bytecode generation for the Flowcode language. The public API is declared in `include/fc_compiler.h`.

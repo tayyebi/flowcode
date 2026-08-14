@@ -86,6 +86,8 @@ int fc_state_get(fc_state_store_t *store, const char *key, const void **value, u
 fc_plugin_registry_t *fc_plugins_create(void);
 void fc_plugins_destroy(fc_plugin_registry_t *registry);
 int fc_plugins_load(fc_plugin_registry_t *registry, const char *path);
+/** Register a single call handler under `name`. Re-registering a name replaces it. */
+int fc_plugins_register(fc_plugin_registry_t *registry, const char *name, fc_plugin_call_fn fn);
 fc_plugin_call_fn fc_plugins_resolve(const fc_plugin_registry_t *registry, const char *name);
 
 fc_scheduler_t *fc_scheduler_create(uint32_t capacity);
@@ -96,6 +98,13 @@ int fc_scheduler_dequeue(fc_scheduler_t *scheduler, fc_frame_t *out_frame);
 fc_vm_t *fc_vm_create(fc_program_t *program, fc_state_store_t *state, fc_plugin_registry_t *plugins);
 void fc_vm_destroy(fc_vm_t *vm);
 int fc_vm_run(fc_vm_t *vm);
+
+/**
+ * Seed the token every run starts with. Without one a run starts token-less and
+ * a `store` before any `emit` fails with FC_ERR_MISSING_TOKEN. `value` must stay
+ * alive for as long as the VM does. Pass NULL to clear.
+ */
+void fc_vm_set_default_token(fc_vm_t *vm, const void *value, uint32_t size);
 
 /** Inspect the last error after fc_vm_run returns non-zero. */
 const fc_error_t *fc_vm_last_error(const fc_vm_t *vm);

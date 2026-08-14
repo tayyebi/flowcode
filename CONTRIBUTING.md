@@ -353,6 +353,11 @@ Before submitting a PR, verify **all** of the following:
 - [ ] `const` used wherever a function does not modify pointed-to data.
 - [ ] No compiler-specific extensions used without `#ifdef` guards.
 - [ ] Commit messages are clear and descriptive.
+- [ ] **Docs are updated with the change.** Any change to the language, the
+      compiler, the runtime, the CLI, or a plugin's behavior must be reflected
+      in the same PR — the wiki (`docs/`, a submodule) for user-facing
+      behavior, and this file or `README.md` for anything a contributor or
+      builder needs to know. A change whose docs are now wrong is not done.
 
 ---
 

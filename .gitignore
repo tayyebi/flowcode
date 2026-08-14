@@ -10,3 +10,5 @@ tests/test_e2e_invalid_opcode
 tests/*.fcb
 node_modules/
 dist/
+plugins/os/libfc_os.so
+plugins/os/libfc_os.dylib

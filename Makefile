@@ -11,7 +11,24 @@ SRC = src/memory.c src/log.c src/error.c src/bytecode.c src/state.c src/schedule
 CLI = src/cli.c
 COMPILER_SRC = src/memory.c src/log.c src/compiler.c
 
+ifeq ($(shell uname -s 2>/dev/null),Darwin)
+  PLUGIN_EXT := dylib
+  PLUGIN_LDFLAGS := -dynamiclib
+else
+  PLUGIN_EXT := so
+  PLUGIN_LDFLAGS := -shared -fPIC
+endif
+
 all: flowcode fcc
+
+# Optional plugin libraries. Not part of `all` and not linked into the CLI —
+# see plugins/os/README.md for why: these do real shell execution, network,
+# and listening, on purpose, and loading one is an explicit opt-in
+# (`flowcode` has no plugin flag; embed the runtime or use fc_plugins_load).
+plugins: plugins/os/libfc_os.$(PLUGIN_EXT)
+
+plugins/os/libfc_os.$(PLUGIN_EXT): plugins/os/os_plugins.c
+	$(CC) $(CFLAGS) $(PLUGIN_LDFLAGS) -o $@ $<
 
 flowcode: $(SRC) $(CLI)
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(CLI) $(LDFLAGS) $(LDLIBS)
@@ -56,5 +73,6 @@ tests/test_e2e_invalid_opcode: $(SRC) tests/test_e2e_invalid_opcode.c
 
 clean:
 	rm -f flowcode fcc tests/test_bytecode tests/test_cli_run tests/test_error_handling $(E2E_TESTS) tests/*.fcb
+	rm -f plugins/os/libfc_os.so plugins/os/libfc_os.dylib
 
-.PHONY: all test test-e2e test-samples clean
+.PHONY: all test test-e2e test-samples plugins clean

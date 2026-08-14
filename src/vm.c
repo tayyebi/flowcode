@@ -105,6 +105,18 @@ static int exec_call(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame
         vm_store_error_state(vm);
         return -1;
     }
+    /* A call's result becomes the current token, so the next step can act on
+     * what the plugin produced. A plugin that leaves `out` empty — the built-in
+     * stubs when nothing upstream emitted — keeps the incoming token. */
+    if (out.value && out.value_size > 0u) {
+        fc_token_t *token = arena_token(vm);
+        if (!token) {
+            vm_set_error(vm, FC_ERR_ARENA_FULL, frame->ip, "token arena exhausted in call");
+            return -1;
+        }
+        *token = out;
+        frame->token = token;
+    }
     return 0;
 }
 

@@ -490,6 +490,12 @@ fc_compile_result_t fc_compile(const char *source) {
     for (size_t i = 0; i < la.count; i++) {
         const char *line = la.lines[i];
 
+        /* A new step, or the next arm of a match, starts reachable code again.
+         * This has to run before the structural skips below, because a step
+         * label ends in ':' and an arm ends in '->' — both of which are
+         * skipped, so neither would ever clear the flag. */
+        if (str_starts_with(line, "step ") || is_arrow_line(line)) after_stop = 0;
+
         /* Skip structural markers, blank lines, parameter lines */
         if (line[0] == '\0') continue;
         if (str_ends_with(line, ":") && !str_starts_with(line, "on_error")) continue;
@@ -499,14 +505,10 @@ fc_compile_result_t fc_compile(const char *source) {
 
         /* Detect unreachable code after 'stop' */
         if (after_stop && strcmp(line, "stop") != 0) {
-            if (str_starts_with(line, "step ")) {
-                after_stop = 0;
-            } else {
-                char msg[256];
-                snprintf(msg, sizeof(msg), "unreachable code after stop");
-                diag_vec_push(&diags, FC_DIAG_WARNING, (int)(i + 1), msg);
-                continue;
-            }
+            char msg[256];
+            snprintf(msg, sizeof(msg), "unreachable code after stop");
+            diag_vec_push(&diags, FC_DIAG_WARNING, (int)(i + 1), msg);
+            continue;
         }
 
         if (is_directive(line, "emit")) {

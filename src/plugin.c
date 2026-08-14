@@ -88,15 +88,17 @@ int fc_plugins_load(fc_plugin_registry_t *registry, const char *path) {
         return -1;
     }
 
-    if (ensure_capacity(registry, desc->export_count) != 0) return -1;
-
+    /* Register each export individually so that a name already in the registry
+     * is replaced rather than shadowed. Resolution returns the first match, so
+     * appending a duplicate would silently leave the earlier entry — typically a
+     * built-in stub — in charge of a name the caller meant to override. */
     for (i = 0; i < desc->export_count; ++i) {
-        char *name = (char *)fc_alloc(strlen(desc->exports[i].name) + 1u);
-        if (!name) return -1;
-        strcpy(name, desc->exports[i].name);
-        registry->entries[registry->count].name = name;
-        registry->entries[registry->count].fn = desc->exports[i].fn;
-        registry->count += 1u;
+        if (fc_plugins_register(registry, desc->exports[i].name,
+                                desc->exports[i].fn) != 0) {
+            fc_log(FC_LOG_ERROR, "failed to register plugin export %s from %s",
+                   desc->exports[i].name, path);
+            return -1;
+        }
     }
 
     return 0;

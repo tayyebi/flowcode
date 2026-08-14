@@ -1,4 +1,16 @@
-## Copilot Instructions for Flowcode
+## AI Agent Instructions for Flowcode
+
+These instructions apply to **any** AI coding assistant working in this repository, regardless of vendor or tool.
+
+This file is the single source of truth. Other agent instruction files are symlinks to it, so edit this file only:
+
+- `.github/copilot-instructions.md` — the real file
+- `CLAUDE.md` (repo root) — symlink
+
+To onboard another agent, add a symlink pointing here rather than a second copy:
+`ln -s .github/copilot-instructions.md AGENTS.md`
+
+Paths below are relative to the repository root unless noted.
 
 Before making any changes to this repository, read and follow the **mandatory** guidelines in [CONTRIBUTING.md](../CONTRIBUTING.md). It enforces pessimistic, hardened, military-grade coding standards. Every rule is non-negotiable.
 

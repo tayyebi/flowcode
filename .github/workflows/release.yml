@@ -1,0 +1,108 @@
+name: Release
+
+# Builds the release binaries and attaches them to a GitHub Release.
+# Triggered by pushing a version tag:
+#   git tag v0.1.0 && git push origin v0.1.0
+# `workflow_dispatch` builds the same artifacts against an existing tag.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-22.04-arm
+          - target: darwin-x64
+            runner: macos-13
+          - target: darwin-arm64
+            runner: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Build
+        run: make
+
+      - name: Verify the binaries pass the test suite
+        run: |
+          make test
+          make test-e2e
+
+      - name: Verify the sample workflows run with the release binaries
+        run: make test-samples
+
+      # The samples ship alongside the binaries so the archive is self-contained:
+      # unpack it and `./fcc samples/<name>/<flow>.fc out.fcb && ./flowcode run out.fcb` works.
+      - name: Package archive
+        id: package
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          NAME="flowcode-${TAG}-${{ matrix.target }}"
+          mkdir -p "dist/${NAME}"
+          cp flowcode fcc README.md "dist/${NAME}/"
+          cp -R samples "dist/${NAME}/samples"
+          tar -czf "dist/${NAME}.tar.gz" -C dist "${NAME}"
+          shasum -a 256 "dist/${NAME}.tar.gz" | awk '{print $1 "  " "'"${NAME}"'.tar.gz"}' > "dist/${NAME}.tar.gz.sha256"
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          ls -l artifacts
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" artifacts/* --clobber

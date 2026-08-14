@@ -7,7 +7,7 @@ else
   LDLIBS := -ldl
 endif
 
-SRC = src/memory.c src/log.c src/error.c src/bytecode.c src/state.c src/scheduler.c src/plugin.c src/vm.c
+SRC = src/memory.c src/log.c src/error.c src/bytecode.c src/state.c src/scheduler.c src/plugin.c src/builtins.c src/vm.c
 CLI = src/cli.c
 COMPILER_SRC = src/memory.c src/log.c src/compiler.c
 
@@ -28,6 +28,10 @@ E2E_TESTS = tests/test_e2e_emit_store tests/test_e2e_transform tests/test_e2e_ro
 
 test-e2e: flowcode fcc $(E2E_TESTS)
 	bash tests/test_e2e.sh
+
+# Compile and run every workflow under samples/ with the built binaries.
+test-samples: flowcode fcc
+	bash tests/test_samples.sh
 
 tests/test_bytecode: $(SRC) tests/test_bytecode.c
 	$(CC) $(CFLAGS) -o $@ $(SRC) tests/test_bytecode.c $(LDFLAGS) $(LDLIBS)
@@ -53,4 +57,4 @@ tests/test_e2e_invalid_opcode: $(SRC) tests/test_e2e_invalid_opcode.c
 clean:
 	rm -f flowcode fcc tests/test_bytecode tests/test_cli_run tests/test_error_handling $(E2E_TESTS) tests/*.fcb
 
-.PHONY: all test test-e2e clean
+.PHONY: all test test-e2e test-samples clean

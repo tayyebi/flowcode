@@ -1,11 +1,19 @@
 #include "flowcode.h"
+#include "fc_builtins.h"
 #include "fc_error.h"
 #include "fc_log.h"
 
 #include <stdio.h>
 #include <string.h>
 
-static int run_fcb(const char *path) {
+static const char default_token_payload[] = FC_BUILTIN_DEFAULT_TOKEN;
+
+static void usage(void) {
+    fprintf(stderr, "usage: flowcode run <file.fcb> [--strict]\n");
+    fprintf(stderr, "  --strict   do not register the built-in plugin stubs\n");
+}
+
+static int run_fcb(const char *path, int use_builtins) {
     fc_program_t program;
     fc_state_store_t *state;
     fc_plugin_registry_t *plugins;
@@ -27,6 +35,20 @@ static int run_fcb(const char *path) {
         fc_plugins_destroy(plugins);
         fc_vm_destroy(vm);
         return 1;
+    }
+
+    if (use_builtins) {
+        if (fc_plugins_register_builtins(plugins) != 0) {
+            fprintf(stderr, "error: failed to register built-in plugins\n");
+            fc_vm_destroy(vm);
+            fc_plugins_destroy(plugins);
+            fc_state_destroy(state);
+            fc_program_free(&program);
+            return 1;
+        }
+        /* Seed a token so a workflow that stores before it emits still runs. */
+        fc_vm_set_default_token(vm, default_token_payload,
+                                (uint32_t)(sizeof(default_token_payload) - 1u));
     }
 
     rc = fc_vm_run(vm);
@@ -51,9 +73,18 @@ static int run_fcb(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3 || strcmp(argv[1], "run") != 0) {
-        fprintf(stderr, "usage: flowcode run <file.fcb>\n");
+    int use_builtins = 1;
+
+    if (argc < 3 || argc > 4 || strcmp(argv[1], "run") != 0) {
+        usage();
         return 1;
     }
-    return run_fcb(argv[2]);
+    if (argc == 4) {
+        if (strcmp(argv[3], "--strict") != 0) {
+            usage();
+            return 1;
+        }
+        use_builtins = 0;
+    }
+    return run_fcb(argv[2], use_builtins);
 }

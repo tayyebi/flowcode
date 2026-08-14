@@ -24,6 +24,8 @@ struct fc_vm_s {
     uint32_t frame_pool_used;
     fc_token_arena_t arena;
     fc_error_t last_error;
+    fc_token_t default_token;
+    int has_default_token;
 };
 
 static void vm_set_error(fc_vm_t *vm, fc_error_code_t code, uint32_t ip, const char *msg) {
@@ -213,6 +215,20 @@ void fc_vm_destroy(fc_vm_t *vm) {
     fc_free(vm);
 }
 
+void fc_vm_set_default_token(fc_vm_t *vm, const void *value, uint32_t size) {
+    if (!vm) return;
+    memset(&vm->default_token, 0, sizeof(vm->default_token));
+    if (!value || size == 0u) {
+        vm->has_default_token = 0;
+        return;
+    }
+    /* The VM never writes through token values; the cast drops const only so the
+     * token struct (shared with plugin outputs) can hold the pointer. */
+    vm->default_token.value = (void *)(uintptr_t)value;
+    vm->default_token.value_size = size;
+    vm->has_default_token = 1;
+}
+
 const fc_error_t *fc_vm_last_error(const fc_vm_t *vm) {
     if (!vm) return NULL;
     return &vm->last_error;
@@ -226,6 +242,7 @@ int fc_vm_run(fc_vm_t *vm) {
     memset(&vm->last_error, 0, sizeof(vm->last_error));
     frame.program = vm->program;
     frame.ip = 0;
+    if (vm->has_default_token) frame.token = &vm->default_token;
 
     fc_log(FC_LOG_INFO, "vm starting, %u instructions", vm->program->instruction_count);
 

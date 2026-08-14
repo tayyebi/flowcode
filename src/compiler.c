@@ -302,12 +302,78 @@ static int is_arrow_line(const char *s) {
 static int is_param_line(const char *s) {
     const char *p = s;
     if (!*p || !isalnum((unsigned char)*p)) return 0;
-    while (*p && (isalnum((unsigned char)*p) || *p == '_' || *p == '.')) p++;
+    /* Keys may be dotted paths or header names such as `If-Modified-Since`. */
+    while (*p && (isalnum((unsigned char)*p) || *p == '_' || *p == '.' || *p == '-')) p++;
     while (*p && isspace((unsigned char)*p)) p++;
     if (*p != '=') return 0;
     p++;
     while (*p && isspace((unsigned char)*p)) p++;
     return *p != '\0';
+}
+
+/**
+ * Match a directive at the start of a line as a whole word, so that
+ * `storage.upload` is not mistaken for the `store` directive.
+ */
+static int is_directive(const char *s, const char *directive) {
+    size_t n = strlen(directive);
+    if (strncmp(s, directive, n) != 0) return 0;
+    /* `workflow: Name` and `parallel:` terminate the keyword with a colon. */
+    return s[n] == '\0' || s[n] == ':' || isspace((unsigned char)s[n]);
+}
+
+/**
+ * Lines that only carry block structure for inline data literals — a lone
+ * brace/bracket, or a fragment of a multi-line list. They emit no instruction.
+ */
+static int is_structural_noise(const char *s) {
+    const char *p;
+    if (strchr("{}[](),", s[0]) != NULL) return 1;
+    /* A line made up solely of punctuation and whitespace. */
+    for (p = s; *p; p++) {
+        if (isalnum((unsigned char)*p) || *p == '_') return 0;
+    }
+    return 1;
+}
+
+/**
+ * Declarative keywords that shape the workflow but generate no instruction.
+ * `stop` is handled by the caller because it also starts unreachable code.
+ */
+static int is_keyword_line(const char *s) {
+    static const char *const keywords[] = {
+        "step", "workflow", "trigger", "use", "parallel", "cron",
+        "schedule", "continue", "break", "else", "default", "stop"
+    };
+    size_t i;
+    for (i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {
+        if (is_directive(s, keywords[i])) return 1;
+    }
+    /* `workflow:` / `trigger:` style headers with no space before the colon. */
+    return 0;
+}
+
+/**
+ * A plugin invocation: a dotted name such as `http.post` or `email.send`,
+ * optionally followed by arguments. `webhook` is accepted bare because it is
+ * the one standard trigger that takes a path argument instead of a method.
+ */
+static int is_plugin_call(const char *s) {
+    const char *p = s;
+    int seen_dot = 0;
+    if (is_directive(s, "webhook")) return 1;
+    if (!isalpha((unsigned char)*p) && *p != '_') return 0;
+    while (*p && !isspace((unsigned char)*p)) {
+        if (*p == '.') {
+            /* A dot must separate two identifier characters. */
+            if (p == s || !(isalnum((unsigned char)p[1]) || p[1] == '_')) return 0;
+            seen_dot = 1;
+        } else if (!isalnum((unsigned char)*p) && *p != '_') {
+            return 0;
+        }
+        p++;
+    }
+    return seen_dot;
 }
 
 /**
@@ -443,12 +509,12 @@ fc_compile_result_t fc_compile(const char *source) {
             }
         }
 
-        if (str_starts_with(line, "emit")) {
+        if (is_directive(line, "emit")) {
             const char *value = extract_param(&la, i + 1, "value");
             if (!value) value = "complete";
             arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_EMIT, value, strlen(value));
 
-        } else if (str_starts_with(line, "transform")) {
+        } else if (is_directive(line, "transform")) {
             /* transform <funcname> */
             const char *p = line + 9;
             while (*p && isspace((unsigned char)*p)) p++;
@@ -459,7 +525,7 @@ fc_compile_result_t fc_compile(const char *source) {
                 instr_vec_push(&instrs, e);
             }
 
-        } else if (str_starts_with(line, "store")) {
+        } else if (is_directive(line, "store")) {
             const char *key = extract_param(&la, i + 1, "key");
             if (key) {
                 arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_STORE, key, strlen(key));
@@ -468,7 +534,7 @@ fc_compile_result_t fc_compile(const char *source) {
                 instr_vec_push(&instrs, e);
             }
 
-        } else if (str_starts_with(line, "loop")) {
+        } else if (is_directive(line, "loop")) {
             uint32_t target = (uint32_t)(instrs.count + 1);
             uint8_t tbuf[4];
             encode_u32(tbuf, target);
@@ -476,11 +542,11 @@ fc_compile_result_t fc_compile(const char *source) {
             route_vec_push(&routes, rt);
             arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_LOOP, tbuf, 4);
 
-        } else if (str_starts_with(line, "await")) {
+        } else if (is_directive(line, "await")) {
             instr_entry_t e = { OP_AWAIT, 0, 0 };
             instr_vec_push(&instrs, e);
 
-        } else if (str_starts_with(line, "match")) {
+        } else if (is_directive(line, "match")) {
             uint32_t target = (uint32_t)(instrs.count + 1);
             uint8_t tbuf[4];
             encode_u32(tbuf, target);
@@ -521,18 +587,18 @@ fc_compile_result_t fc_compile(const char *source) {
                 }
             }
 
-        } else if (str_starts_with(line, "retry")) {
+        } else if (is_directive(line, "retry")) {
             diag_vec_push(&diags, FC_DIAG_WARNING, (int)(i + 1),
                           "standalone retry outside on_error block; wrap in on_error for proper handling");
 
-        } else if (str_starts_with(line, "timeout")) {
+        } else if (is_directive(line, "timeout")) {
             /* Recognized; consumed by extractParam from parent */
 
-        } else if (str_starts_with(line, "compensate")) {
+        } else if (is_directive(line, "compensate")) {
             /* Recognized structural marker */
 
-        } else if (str_starts_with(line, "http.") || str_starts_with(line, "webhook")) {
-            /* Plugin call */
+        } else if (is_plugin_call(line)) {
+            /* Any dotted name is a plugin call: http.post, email.send, ai.generate, … */
             char name[128];
             size_t ni = 0;
             const char *p = line;
@@ -540,24 +606,10 @@ fc_compile_result_t fc_compile(const char *source) {
             name[ni] = '\0';
             arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_CALL, name, ni);
 
-        } else if (str_starts_with(line, "step ") ||
-                   str_starts_with(line, "workflow") ||
-                   str_starts_with(line, "trigger") ||
-                   str_starts_with(line, "use ") ||
-                   str_starts_with(line, "parallel") ||
-                   strcmp(line, "stop") == 0 ||
-                   str_starts_with(line, "email.") ||
-                   str_starts_with(line, "crm.") ||
-                   str_starts_with(line, "storage.")) {
-            /* Plugin calls */
-            if (str_starts_with(line, "email.") || str_starts_with(line, "crm.") || str_starts_with(line, "storage.")) {
-                char name[128];
-                size_t ni = 0;
-                const char *p = line;
-                while (*p && !isspace((unsigned char)*p) && ni < sizeof(name) - 1) name[ni++] = *p++;
-                name[ni] = '\0';
-                arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_CALL, name, ni);
-            }
+        } else if (is_structural_noise(line)) {
+            /* Brace/bracket fragments of inline data literals. */
+
+        } else if (is_keyword_line(line)) {
             if (strcmp(line, "stop") == 0) {
                 after_stop = 1;
             }
@@ -566,6 +618,18 @@ fc_compile_result_t fc_compile(const char *source) {
             char msg[256];
             snprintf(msg, sizeof(msg), "unrecognized line: %s", line);
             diag_vec_push(&diags, FC_DIAG_WARNING, (int)(i + 1), msg);
+        }
+    }
+
+    /* ---------- Post-pass: terminator for trailing jumps ---------- */
+    /* A `match`/`loop` that is the last instruction targets one past the end of
+     * the program, which the VM rejects as out of bounds. Append an identity
+     * transform so the jump lands on a real instruction and the run terminates. */
+    for (size_t i = 0; i < routes.count; i++) {
+        if (routes.items[i].target_instr == (uint32_t)instrs.count) {
+            instr_entry_t nop = { OP_TRANSFORM, 0, 0 };
+            instr_vec_push(&instrs, nop);
+            break;
         }
     }
 

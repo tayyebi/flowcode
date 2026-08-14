@@ -102,6 +102,26 @@ int fc_plugins_load(fc_plugin_registry_t *registry, const char *path) {
     return 0;
 }
 
+int fc_plugins_register(fc_plugin_registry_t *registry, const char *name, fc_plugin_call_fn fn) {
+    uint32_t i;
+    char *copy;
+    if (!registry || !name || !fn) return -1;
+    for (i = 0; i < registry->count; ++i) {
+        if (strcmp(registry->entries[i].name, name) == 0) {
+            registry->entries[i].fn = fn;
+            return 0;
+        }
+    }
+    if (ensure_capacity(registry, 1u) != 0) return -1;
+    copy = (char *)fc_alloc(strlen(name) + 1u);
+    if (!copy) return -1;
+    strcpy(copy, name);
+    registry->entries[registry->count].name = copy;
+    registry->entries[registry->count].fn = fn;
+    registry->count += 1u;
+    return 0;
+}
+
 fc_plugin_call_fn fc_plugins_resolve(const fc_plugin_registry_t *registry, const char *name) {
     uint32_t i;
     if (!registry || !name) return NULL;

@@ -45,6 +45,18 @@ A full e-commerce order processing workflow covering inventory checks, fraud det
 
 ## Running
 
+Compile the workflow, then run the bytecode. Both binaries ship in the release
+archive (`flowcode-<version>-<platform>.tar.gz`); from a source checkout run
+`make` first and prefix them with `./`.
+
 ```bash
+fcc order.fc order.fcb
 flowcode run order.fcb
 ```
+
+The integrations named above (`http.*`, `email.*`, ...) resolve to the runtime's
+built-in stubs, which log the call and pass the token through instead of
+performing real I/O -- so the sample runs to completion without credentials or
+network access. Load a plugin library exporting the same names to make the calls
+real, or pass `--strict` to `flowcode run` to disable the stubs and have
+unresolved calls fail.

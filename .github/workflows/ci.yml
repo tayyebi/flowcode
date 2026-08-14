@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: make
+
+      - name: Unit tests
+        run: make test
+
+      - name: End-to-end tests
+        run: make test-e2e
+
+      - name: Sample workflows
+        run: make test-samples
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: flowcode-${{ matrix.os }}
+          path: |
+            flowcode
+            fcc
+          if-no-files-found: error

@@ -18,8 +18,22 @@ If you are new to the repository, start here:
 1. Build the runtime with `make`.
 2. Run the existing test suite with `make test`.
 3. Review the sample workflows under `samples/`.
-4. Start with `samples/customer-onboarding/` for a complete example that covers validation, human review, branching, loops, parallel work, state storage, and event emission.
+4. Start with `samples/hello-world/` — two instructions, no plugins — then read `samples/customer-onboarding/` for a complete example that covers validation, human review, branching, loops, parallel work, state storage, and event emission.
 5. Run compiled bytecode locally with `./flowcode run <file.fcb>`.
+
+## Install a released binary
+
+Every `v*` tag builds release archives for linux-x64, linux-arm64, darwin-x64,
+and darwin-arm64 and attaches them to the GitHub Release. Each archive contains
+`flowcode`, `fcc`, and a copy of `samples/`, so an unpacked release runs the
+examples on its own:
+
+```bash
+tar -xzf flowcode-v0.1.0-linux-x64.tar.gz
+cd flowcode-v0.1.0-linux-x64
+./fcc samples/hello-world/hello.fc hello.fcb
+./flowcode run hello.fcb
+```
 
 ## Build
 
@@ -40,6 +54,42 @@ Runs end-to-end tests covering the full pipeline (compiler → bytecode → runt
 ```bash
 make test-e2e
 ```
+
+## Sample workflows
+
+Compiles and runs every workflow under `samples/` with the built binaries — the
+check that the shipped compiler and runtime execute the documented examples end
+to end:
+
+```bash
+make test-samples
+```
+
+## Built-in plugins
+
+The `flowcode` CLI registers no-I/O stubs for the standard integration names —
+`http.*`, `email.*`, `crm.*`, `storage.*`, `form.*`, `ai.*`, `memory.*`,
+`mqtt.*`, and `webhook`. Each logs the call and passes the token through, so a
+workflow written against them runs to completion with no credentials, no
+network, and no side effects. The CLI also seeds an empty default token so a
+workflow that stores before it emits still runs.
+
+Loading a plugin library that exports one of these names replaces the stub:
+
+```c
+fc_plugins_register_builtins(registry);   /* stubs first */
+fc_plugins_load(registry, "./libhttp.so"); /* real http.* wins */
+```
+
+To turn the stubs off and have unresolved calls fail with
+`FC_ERR_PLUGIN_NOT_FOUND`:
+
+```bash
+flowcode run workflow.fcb --strict
+```
+
+Embedders that build on `fc_vm_*` directly get neither stubs nor a default
+token; both are CLI-level conveniences.
 
 ## Error handling
 
@@ -102,7 +152,8 @@ The compiler performs semantic validation and reports structured diagnostics:
 ### Run a compiled workflow
 
 ```bash
-./flowcode run path/to/workflow.fcb
+./fcc path/to/workflow.fc workflow.fcb
+./flowcode run workflow.fcb
 ```
 
 ### Extend the compiler

@@ -7,6 +7,11 @@ tests/test_e2e_emit_store
 tests/test_e2e_transform
 tests/test_e2e_route
 tests/test_e2e_invalid_opcode
+tests/test_call_result
+tests/test_stop_scope
+tests/test_plugin_load
+tests/fixtures/test_plugin.so
+tests/fixtures/test_plugin.dylib
 tests/*.fcb
 node_modules/
 dist/

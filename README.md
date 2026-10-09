@@ -735,6 +735,18 @@ That's the direction Flowcode is exploring.
 
 ---
 
+# The bet
+
+The bet is that any automation workflow decomposes into seven verbs:
+
+- **emit / await** — produce and consume tokens (the edges of the flow)
+- **transform** — change what's in the token
+- **call** — reach outside the VM for any side effect
+- **route / loop** — all of control flow, in just two ops
+- **store** — persistence, in one
+
+---
+
 # The thesis
 
 > **The next generation of programming languages may not be designed for humans to write software faster.**

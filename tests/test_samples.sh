@@ -20,6 +20,13 @@ if [ ! -x "$FLOWCODE" ] || [ ! -x "$COMPILER" ]; then
     exit 1
 fi
 
+# Runnable examples moved to flowcode-playground's examples/; with no local
+# samples/ directory there is nothing to check here.
+if [ ! -d "$ROOT_DIR/samples" ]; then
+    printf "no samples/ directory — nothing to test (examples live in flowcode-playground)\n"
+    exit 0
+fi
+
 printf "=== Flowcode Sample Workflows ===\n\n"
 printf "flowcode: %s\n" "$FLOWCODE"
 printf "fcc:      %s\n\n" "$COMPILER"

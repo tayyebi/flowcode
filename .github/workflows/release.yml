@@ -52,8 +52,8 @@ jobs:
       - name: Verify the sample workflows run with the release binaries
         run: make test-samples
 
-      # The samples ship alongside the binaries so the archive is self-contained:
-      # unpack it and `./fcc samples/<name>/<flow>.fc out.fcb && ./flowcode run out.fcb` works.
+      # Samples live in flowcode-playground's examples/ now; the archive is
+      # binaries + README only.
       - name: Package archive
         id: package
         run: |
@@ -62,7 +62,6 @@ jobs:
           NAME="flowcode-${TAG}-${{ matrix.target }}"
           mkdir -p "dist/${NAME}"
           cp flowcode fcc README.md "dist/${NAME}/"
-          cp -R samples "dist/${NAME}/samples"
           tar -czf "dist/${NAME}.tar.gz" -C dist "${NAME}"
           shasum -a 256 "dist/${NAME}.tar.gz" | awk '{print $1 "  " "'"${NAME}"'.tar.gz"}' > "dist/${NAME}.tar.gz.sha256"
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"

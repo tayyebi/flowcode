@@ -304,7 +304,8 @@ step data:
 end
 
 step action:
-    http.get
+    UrlFetchApp.fetch
+        url = "https://example.com"
     on_error retry
 end
 

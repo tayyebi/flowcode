@@ -1,11 +1,19 @@
 /*
  * Built-in plugin stubs.
  *
- * Every export here is a no-I/O pass-through: it logs the call and forwards the
- * incoming token. That is enough for the workflows under samples/ to run to
- * completion with the released binary, and it keeps the stubs harmless — a
- * shipped `http.post` that actually posted would be a surprise. Replace any of
- * them by loading a plugin library that exports the same name.
+ * Every export here is a no-I/O pass-through: it logs the call and forwards
+ * the incoming token. That is enough for workflows to run to completion with
+ * the released binary, and it keeps the stubs harmless — a shipped
+ * `MailApp.sendEmail` that actually sent mail would be a surprise. Replace any
+ * of them by registering a real handler under the same name (the playground's
+ * runner does exactly that over its unix-socket bridge).
+ *
+ * The four names are the Apps-Script-style standard apps:
+ *
+ *   MailApp.sendEmail   deliver mail through the host's SMTP
+ *   MailApp.read        read mail through the host's IMAP
+ *   UrlFetchApp.fetch   make an HTTP request
+ *   Logger.log          emit a log entry to the host's log sink
  */
 
 #include "fc_builtins.h"
@@ -16,16 +24,15 @@
 /* Payload handed to callers when nothing upstream produced a token. */
 static char builtin_empty_payload[] = FC_BUILTIN_DEFAULT_TOKEN;
 
-static fc_plugin_result_t builtin_passthrough(const char *name,
-                                              const fc_token_t *in,
+static fc_plugin_result_t builtin_passthrough(const fc_call_t *call,
                                               fc_token_t *out) {
-    fc_log(FC_LOG_DEBUG, "builtin plugin %s invoked (no-op pass-through)", name);
+    fc_log(FC_LOG_DEBUG, "builtin plugin %s invoked (no-op pass-through)", call->name);
     if (!out) return FC_PLUGIN_OK;
     out->context = NULL;
     out->metadata = 0u;
-    if (in && in->value && in->value_size > 0u) {
-        out->value = in->value;
-        out->value_size = in->value_size;
+    if (call->token && call->token->value && call->token->value_size > 0u) {
+        out->value = call->token->value;
+        out->value_size = call->token->value_size;
     } else {
         out->value = builtin_empty_payload;
         out->value_size = (uint32_t)(sizeof(builtin_empty_payload) - 1u);
@@ -33,50 +40,11 @@ static fc_plugin_result_t builtin_passthrough(const char *name,
     return FC_PLUGIN_OK;
 }
 
-#define FC_BUILTIN(ident, exported_name)                                       \
-    static fc_plugin_result_t builtin_##ident(const fc_token_t *in,            \
-                                              fc_token_t *out) {               \
-        return builtin_passthrough(exported_name, in, out);                    \
-    }
-
-FC_BUILTIN(http_get, "http.get")
-FC_BUILTIN(http_post, "http.post")
-FC_BUILTIN(http_put, "http.put")
-FC_BUILTIN(http_delete, "http.delete")
-FC_BUILTIN(email_send, "email.send")
-FC_BUILTIN(crm_add_note, "crm.addNote")
-FC_BUILTIN(crm_create_customer, "crm.createCustomer")
-FC_BUILTIN(storage_upload, "storage.upload")
-FC_BUILTIN(form_render, "form.render")
-FC_BUILTIN(form_submit, "form.submit")
-FC_BUILTIN(ai_generate, "ai.generate")
-FC_BUILTIN(ai_extract, "ai.extract")
-FC_BUILTIN(memory_fetch, "memory.fetch")
-FC_BUILTIN(memory_store, "memory.store")
-FC_BUILTIN(mqtt_publish, "mqtt.publish")
-FC_BUILTIN(mqtt_subscribe, "mqtt.subscribe")
-FC_BUILTIN(webhook, "webhook")
-
-#undef FC_BUILTIN
-
 static const fc_plugin_export_t builtin_exports[] = {
-    {"http.get", builtin_http_get},
-    {"http.post", builtin_http_post},
-    {"http.put", builtin_http_put},
-    {"http.delete", builtin_http_delete},
-    {"email.send", builtin_email_send},
-    {"crm.addNote", builtin_crm_add_note},
-    {"crm.createCustomer", builtin_crm_create_customer},
-    {"storage.upload", builtin_storage_upload},
-    {"form.render", builtin_form_render},
-    {"form.submit", builtin_form_submit},
-    {"ai.generate", builtin_ai_generate},
-    {"ai.extract", builtin_ai_extract},
-    {"memory.fetch", builtin_memory_fetch},
-    {"memory.store", builtin_memory_store},
-    {"mqtt.publish", builtin_mqtt_publish},
-    {"mqtt.subscribe", builtin_mqtt_subscribe},
-    {"webhook", builtin_webhook}
+    {"MailApp.sendEmail", builtin_passthrough},
+    {"MailApp.read",      builtin_passthrough},
+    {"UrlFetchApp.fetch", builtin_passthrough},
+    {"Logger.log",        builtin_passthrough},
 };
 
 int fc_plugins_register_builtins(fc_plugin_registry_t *registry) {

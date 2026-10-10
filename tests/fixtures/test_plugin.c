@@ -7,8 +7,8 @@
 
 static char loaded_payload[] = "LOADED";
 
-static fc_plugin_result_t loaded_echo(const fc_token_t *in, fc_token_t *out) {
-    (void)in;
+static fc_plugin_result_t loaded_echo(const fc_call_t *call, fc_token_t *out) {
+    (void)call;
     if (!out) return FC_PLUGIN_OK;
     out->value = loaded_payload;
     out->value_size = (uint32_t)(sizeof(loaded_payload) - 1u);

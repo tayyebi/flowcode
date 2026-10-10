@@ -1,12 +1,10 @@
 /*
  * os plugin — the two primitives everything else in this library is built
- * from, plus two workflow-facing plugins assembled out of them:
+ * from, plus one workflow-facing plugin assembled out of them:
  *
  *   os.print   write the token to stdout, pass it through unchanged
  *   os.exec    run the token's text as a shell command, capture stdout
  *   http.get   os.exec, trying curl / wget / python3 in that order
- *   webhook    os.exec, trying nc / python3 in that order, waits for
- *              exactly one request and returns its body
  *
  * This is deliberately not built into the `flowcode` CLI. The stubs the CLI
  * registers by default do no I/O on purpose — see fc_builtins.h — and that
@@ -15,11 +13,11 @@
  *
  *     fc_plugins_load(plugins, "./libfc_os.so");
  *
- * Because Flowcode's call ABI passes only the current token (see
- * doc/Plugins-and-Integrations.md — call parameters like `url = ...` are
- * discarded by the compiler and never reach a plugin), every plugin here
- * takes its one argument *as the token text*: `http.get`'s token is the URL,
- * `webhook`'s token is the port to listen on.
+ * Since the call ABI carries compiled parameters (fc_call_t.params), plugins
+ * here read their argument from the matching param when one is present and
+ * fall back to the token text otherwise: `http.get` with `url = "..."`
+ * uses the param; a bare emit-then-call still works with the URL as the
+ * token.
  *
  * Every exec here runs through `/bin/sh -c`, so anything that reaches a
  * token here is executed. That is the feature, not an accident — treat any
@@ -34,7 +32,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 /* Hard ceilings so a runaway command or a hostile token cannot exhaust
  * memory. Output beyond this is truncated, not rejected. */
@@ -169,19 +166,30 @@ static fc_plugin_result_t set_out(fc_token_t *out, char *buf, size_t len) {
     return FC_PLUGIN_OK;
 }
 
+/* Look up a compiled call parameter; NULL when the call had no such key. */
+static const char *call_param(const fc_call_t *call, const char *key) {
+    size_t i;
+    if (!call || !call->params) return NULL;
+    for (i = 0; call->params[i].key; i++) {
+        if (strcmp(call->params[i].key, key) == 0) return call->params[i].value;
+    }
+    return NULL;
+}
+
 /* os.exec — token in is the command line, token out is captured stdout. */
-static fc_plugin_result_t os_exec(const fc_token_t *in, fc_token_t *out) {
+static fc_plugin_result_t os_exec(const fc_call_t *call, fc_token_t *out) {
     char cmd[FC_OS_MAX_ARG_LEN + 1];
     char *buf;
     size_t len;
 
-    if (token_text(in, cmd, sizeof(cmd)) != 0) return FC_PLUGIN_ERR;
+    if (token_text(call->token, cmd, sizeof(cmd)) != 0) return FC_PLUGIN_ERR;
     if (exec_capture(cmd, &buf, &len) != 0) return FC_PLUGIN_ERR;
     return set_out(out, buf, len);
 }
 
 /* os.print — token in is written to stdout as-is, token out == token in. */
-static fc_plugin_result_t os_print(const fc_token_t *in, fc_token_t *out) {
+static fc_plugin_result_t os_print(const fc_call_t *call, fc_token_t *out) {
+    const fc_token_t *in = call->token;
     if (in && in->value && in->value_size > 0) {
         fwrite(in->value, 1, in->value_size, stdout);
         fputc('\n', stdout);
@@ -217,19 +225,24 @@ static fc_plugin_result_t run_fallback_chain(const char *const *cmds, size_t n,
 }
 
 /* ------------------------------------------------------------------ */
-/* http.get — token in is a URL, token out is the response body.       */
+/* http.get — url param (or token) in, response body out.              */
 /* ------------------------------------------------------------------ */
 
-static fc_plugin_result_t http_get(const fc_token_t *in, fc_token_t *out) {
+static fc_plugin_result_t http_get(const fc_call_t *call, fc_token_t *out) {
     char url[FC_OS_MAX_ARG_LEN + 1];
     char quoted[FC_OS_MAX_ARG_LEN + 8];
     char cmd_curl[FC_OS_MAX_CMD_LEN];
     char cmd_wget[FC_OS_MAX_CMD_LEN];
     char cmd_py[FC_OS_MAX_CMD_LEN];
     const char *chain[3];
+    const char *urlp = call_param(call, "url");
     int n;
 
-    if (token_text(in, url, sizeof(url)) != 0) return FC_PLUGIN_ERR;
+    if (urlp && strlen(urlp) < sizeof(url)) {
+        snprintf(url, sizeof(url), "%s", urlp);
+    } else if (token_text(call->token, url, sizeof(url)) != 0) {
+        return FC_PLUGIN_ERR;
+    }
     if (shell_quote(url, strlen(url), quoted, sizeof(quoted)) != 0) return FC_PLUGIN_ERR;
 
     n = snprintf(cmd_curl, sizeof(cmd_curl), "curl -fsSL -- %s 2>/dev/null", quoted);
@@ -252,67 +265,6 @@ static fc_plugin_result_t http_get(const fc_token_t *in, fc_token_t *out) {
 }
 
 /* ------------------------------------------------------------------ */
-/* webhook — token in is a port number, token out is one request body. */
-/* ------------------------------------------------------------------ */
-
-/*
- * Blocks until exactly one HTTP request arrives on the given port, then
- * returns. This is a single-shot listener, not a server: the workflow is
- * a program that runs once, so "wait for a webhook" here means "wait for
- * the next call and stop". Run flowcode again to accept another.
- */
-static fc_plugin_result_t webhook(const fc_token_t *in, fc_token_t *out) {
-    char port[FC_OS_MAX_ARG_LEN + 1];
-    char cmd_nc[FC_OS_MAX_CMD_LEN];
-    char cmd_py[FC_OS_MAX_CMD_LEN];
-    const char *chain[2];
-    int n;
-    long portnum;
-    char *end;
-
-    if (token_text(in, port, sizeof(port)) != 0) {
-        /* No port supplied: default to 8080, the same default `form.render`
-         * examples in the samples imply for local testing. */
-        memcpy(port, "8080", 5);
-    }
-
-    errno = 0;
-    portnum = strtol(port, &end, 10);
-    if (errno != 0 || end == port || *end != '\0' || portnum < 1 || portnum > 65535) {
-        return FC_PLUGIN_ERR;
-    }
-
-    /* `nc`: accept one connection, print whatever it sends until the peer
-     * closes. Good enough to capture a POSTed body for a single call. */
-    n = snprintf(cmd_nc, sizeof(cmd_nc), "nc -l %ld 2>/dev/null", portnum);
-    if (n < 0 || (size_t)n >= sizeof(cmd_nc)) return FC_PLUGIN_ERR;
-
-    /* python3 fallback: a one-shot HTTP server that reads exactly one
-     * request, writes its body to stdout, and exits. */
-    n = snprintf(cmd_py, sizeof(cmd_py),
-                 "python3 -c '"
-                 "import http.server as h,sys\n"
-                 "class Handler(h.BaseHTTPRequestHandler):\n"
-                 "    def do_POST(self):\n"
-                 "        n=int(self.headers.get(\"Content-Length\",0))\n"
-                 "        sys.stdout.buffer.write(self.rfile.read(n))\n"
-                 "        self.send_response(200); self.end_headers()\n"
-                 "    def do_GET(self):\n"
-                 "        sys.stdout.buffer.write(self.path.encode())\n"
-                 "        self.send_response(200); self.end_headers()\n"
-                 "    def log_message(self,*a): pass\n"
-                 "s=h.HTTPServer((\"0.0.0.0\",%ld),Handler)\n"
-                 "s.handle_request()\n"
-                 "'",
-                 portnum);
-    if (n < 0 || (size_t)n >= sizeof(cmd_py)) return FC_PLUGIN_ERR;
-
-    chain[0] = cmd_nc;
-    chain[1] = cmd_py;
-    return run_fallback_chain(chain, 2, out);
-}
-
-/* ------------------------------------------------------------------ */
 /* Plugin descriptor                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -320,7 +272,6 @@ static fc_plugin_export_t exports[] = {
     { "os.print", os_print },
     { "os.exec",  os_exec },
     { "http.get", http_get },
-    { "webhook",  webhook },
 };
 
 static fc_plugin_descriptor_t descriptor = {

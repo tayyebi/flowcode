@@ -20,8 +20,8 @@
 
 static char stub_payload[] = "STUB";
 
-static fc_plugin_result_t stub_echo(const fc_token_t *in, fc_token_t *out) {
-    (void)in;
+static fc_plugin_result_t stub_echo(const fc_call_t *call, fc_token_t *out) {
+    (void)call;
     if (!out) return FC_PLUGIN_OK;
     out->value = stub_payload;
     out->value_size = (uint32_t)(sizeof(stub_payload) - 1u);

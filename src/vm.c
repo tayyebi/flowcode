@@ -8,6 +8,8 @@
 
 #define FC_MAX_NAME_LENGTH 256
 #define FC_MAX_FRAME_POOL 256
+/* Must match the compiler's cap (append_call_params in compiler.c). */
+#define FC_MAX_CALL_PARAMS 32
 
 typedef struct {
     fc_token_t *tokens;
@@ -20,6 +22,7 @@ struct fc_vm_s {
     fc_state_store_t *state;
     fc_plugin_registry_t *plugins;
     fc_scheduler_t *scheduler;
+    void *host;
     fc_frame_t frame_pool[FC_MAX_FRAME_POOL];
     uint32_t frame_pool_used;
     fc_token_arena_t arena;
@@ -80,16 +83,75 @@ static int exec_emit(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame
     return 0;
 }
 
+/**
+ * Parse a CALL/TRANSFORM argument blob: "name\0key\0value\0key\0value\0...".
+ *
+ * A blob with no interior NUL is a legacy image compiled before parameters
+ * existed — the whole blob is the name and there are no params. Every segment
+ * after the name must be NUL-terminated inside the blob (the compiler always
+ * writes the terminator); anything else is malformed and rejected.
+ *
+ * Param key/value pointers reference the program's arg blob directly, so they
+ * stay alive for as long as the program does.
+ */
+static int parse_call_arg(const fc_program_t *program, const fc_instruction_t *ins,
+                          char *name, size_t name_cap,
+                          fc_param_t *params, uint32_t *param_count) {
+    const uint8_t *blob = &program->arg_blob[ins->arg_offset];
+    uint32_t len = ins->arg_length;
+    uint32_t pos = 0;
+    uint32_t count = 0;
+
+    while (pos < len && blob[pos] != 0u) {
+        if ((size_t)pos + 1u >= name_cap) return -1;
+        name[pos] = (char)blob[pos];
+        pos++;
+    }
+    name[pos] = '\0';
+    if (pos == len) {
+        *param_count = 0u; /* legacy image: no NUL, no params */
+        return 0;
+    }
+    pos++; /* skip the name's NUL */
+
+    while (pos < len) {
+        const uint8_t *key = &blob[pos];
+        uint32_t klen = 0u, vlen = 0u;
+        const uint8_t *val;
+        while (pos + klen < len && blob[pos + klen] != 0u) klen++;
+        if (pos + klen >= len) return -1; /* unterminated key */
+        pos += klen + 1u;
+        if (pos >= len) return -1; /* key without a value */
+        val = &blob[pos];
+        while (pos + vlen < len && blob[pos + vlen] != 0u) vlen++;
+        if (pos + vlen >= len) return -1; /* unterminated value */
+        pos += vlen + 1u;
+        if (count >= FC_MAX_CALL_PARAMS) return -1;
+        params[count].key = (const char *)key;
+        params[count].value = (const char *)val;
+        count++;
+    }
+    *param_count = count;
+    return 0;
+}
+
 static int exec_call(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame) {
     char name[FC_MAX_NAME_LENGTH];
+    /* +1 slot: the array handed to plugins is NULL-terminated (fc_call_t). */
+    fc_param_t params[FC_MAX_CALL_PARAMS + 1];
+    uint32_t param_count = 0u;
     fc_plugin_call_fn fn;
+    fc_call_t call;
     fc_token_t out;
-    if (ins->arg_length == 0 || ins->arg_length >= sizeof(name)) {
+    if (ins->arg_length == 0) {
         vm_set_error(vm, FC_ERR_ARG_OVERFLOW, frame->ip, "call arg_length invalid");
         return -1;
     }
-    memcpy(name, &vm->program->arg_blob[ins->arg_offset], ins->arg_length);
-    name[ins->arg_length] = '\0';
+    memset(params, 0, sizeof(params));
+    if (parse_call_arg(vm->program, ins, name, sizeof(name), params, &param_count) != 0) {
+        vm_set_error(vm, FC_ERR_ARG_OVERFLOW, frame->ip, "call argument blob malformed");
+        return -1;
+    }
     fn = fc_plugins_resolve(vm->plugins, name);
     if (!fn) {
         vm_set_error(vm, FC_ERR_PLUGIN_NOT_FOUND, frame->ip, name);
@@ -100,7 +162,11 @@ static int exec_call(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *frame
         return -1;
     }
     memset(&out, 0, sizeof(out));
-    if (fn(frame->token, &out) != FC_PLUGIN_OK) {
+    call.name = name;
+    call.token = frame->token;
+    call.params = param_count > 0u ? params : NULL;
+    call.host = vm->host;
+    if (fn(&call, &out) != FC_PLUGIN_OK) {
         vm_set_error(vm, FC_ERR_PLUGIN_CALL, frame->ip, name);
         vm_store_error_state(vm);
         return -1;
@@ -124,19 +190,26 @@ static int exec_transform(fc_vm_t *vm, const fc_instruction_t *ins, fc_frame_t *
     /* If a transform plugin is named, attempt to resolve and invoke it. */
     if (ins->arg_length > 0) {
         char name[FC_MAX_NAME_LENGTH];
+        /* +1 slot: the array handed to plugins is NULL-terminated (fc_call_t). */
+        fc_param_t params[FC_MAX_CALL_PARAMS + 1];
+        uint32_t param_count = 0u;
         fc_plugin_call_fn fn;
-        if (ins->arg_length >= sizeof(name)) {
-            vm_set_error(vm, FC_ERR_ARG_OVERFLOW, frame->ip, "transform name too long");
+        memset(params, 0, sizeof(params));
+        if (parse_call_arg(vm->program, ins, name, sizeof(name), params, &param_count) != 0) {
+            vm_set_error(vm, FC_ERR_ARG_OVERFLOW, frame->ip, "transform argument blob malformed");
             return -1;
         }
-        memcpy(name, &vm->program->arg_blob[ins->arg_offset], ins->arg_length);
-        name[ins->arg_length] = '\0';
         fn = fc_plugins_resolve(vm->plugins, name);
         if (fn) {
+            fc_call_t call;
             fc_token_t result;
             fc_token_t *out;
             memset(&result, 0, sizeof(result));
-            if (fn(frame->token, &result) != FC_PLUGIN_OK) {
+            call.name = name;
+            call.token = frame->token;
+            call.params = param_count > 0u ? params : NULL;
+            call.host = vm->host;
+            if (fn(&call, &result) != FC_PLUGIN_OK) {
                 vm_set_error(vm, FC_ERR_PLUGIN_CALL, frame->ip, name);
                 vm_store_error_state(vm);
                 return -1;
@@ -225,6 +298,11 @@ void fc_vm_destroy(fc_vm_t *vm) {
     fc_free(vm->arena.tokens);
     vm->arena.tokens = NULL;
     fc_free(vm);
+}
+
+void fc_vm_set_host(fc_vm_t *vm, void *host) {
+    if (!vm) return;
+    vm->host = host;
 }
 
 void fc_vm_set_default_token(fc_vm_t *vm, const void *value, uint32_t size) {

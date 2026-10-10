@@ -354,14 +354,12 @@ static int is_keyword_line(const char *s) {
 }
 
 /**
- * A plugin invocation: a dotted name such as `http.post` or `email.send`,
- * optionally followed by arguments. `webhook` is accepted bare because it is
- * the one standard trigger that takes a path argument instead of a method.
+ * A plugin invocation: a dotted name such as `MailApp.sendEmail` or
+ * `UrlFetchApp.fetch`, optionally followed by arguments.
  */
 static int is_plugin_call(const char *s) {
     const char *p = s;
     int seen_dot = 0;
-    if (is_directive(s, "webhook")) return 1;
     if (!isalpha((unsigned char)*p) && *p != '_') return 0;
     while (*p && !isspace((unsigned char)*p)) {
         if (*p == '.') {
@@ -405,6 +403,79 @@ static const char *extract_param(const line_array_t *la, size_t start, const cha
         }
     }
     return NULL;
+}
+
+/* ------------------------------------------------------------------ */
+/* Call/transform parameters                                          */
+/* ------------------------------------------------------------------ */
+
+/* Must match the VM's cap (parse_call_arg in vm.c). */
+#define FC_MAX_CALL_PARAMS 32
+
+/**
+ * Append the `key = value` lines that follow a call or transform directive
+ * into the just-pushed instruction's arg blob as key\0value\0 pairs (the name
+ * itself is already there, NUL-terminated — see parse_call_arg in vm.c for
+ * the encoding). Boundaries mirror extract_param's: a blank line, `end`, a
+ * block header (trailing ':'), or a match arm ('->') ends the parameter block.
+ *
+ * Returns the number of bytes appended; the CALLER must add this to its
+ * running arg_offset, or every later instruction's offset will overlap the
+ * parameters.
+ *
+ * Quotes are stripped from the value exactly as extract_param does; keys keep
+ * their dotted/dashed form verbatim (is_param_line admits `If-Modified-Since`
+ * style header names).
+ */
+static size_t append_call_params(instr_vec_t *instrs, byte_buf_t *args,
+                                 const line_array_t *la, size_t start,
+                                 diag_vec_t *diags, int src_line) {
+    size_t appended = 0;
+    size_t count = 0;
+    size_t i;
+    for (i = start; i < la->count; i++) {
+        const char *l = la->lines[i];
+        const char *eq;
+        const char *v;
+        char key[128];
+        char value[512];
+        size_t klen, vlen;
+
+        if (!l[0] || strcmp(l, "end") == 0 || str_ends_with(l, ":") || is_arrow_line(l)) break;
+        if (!is_param_line(l)) continue;
+
+        eq = strchr(l, '=');
+        klen = (size_t)(eq - l);
+        while (klen > 0 && isspace((unsigned char)l[klen - 1])) klen--;
+        if (klen == 0 || klen >= sizeof(key)) continue;
+        memcpy(key, l, klen);
+        key[klen] = '\0';
+
+        v = eq + 1;
+        while (*v && isspace((unsigned char)*v)) v++;
+        vlen = strlen(v);
+        if (vlen >= 2 && v[0] == '"' && v[vlen - 1] == '"') {
+            v++;
+            vlen -= 2;
+        }
+        if (vlen >= sizeof(value)) vlen = sizeof(value) - 1;
+        memcpy(value, v, vlen);
+        value[vlen] = '\0';
+
+        if (count >= FC_MAX_CALL_PARAMS) {
+            diag_vec_push(diags, FC_DIAG_ERROR, src_line,
+                          "too many parameters on call (max 32)");
+            break;
+        }
+        if (byte_buf_append(args, key, klen + 1) != 0) break;
+        if (byte_buf_append(args, value, vlen + 1) != 0) break;
+        appended += klen + 1 + vlen + 1;
+        count++;
+    }
+    if (appended > 0) {
+        instrs->items[instrs->count - 1].arg_length += (uint32_t)appended;
+    }
+    return appended;
 }
 
 /* ------------------------------------------------------------------ */
@@ -519,9 +590,14 @@ fc_compile_result_t fc_compile(const char *source) {
         } else if (is_directive(line, "transform")) {
             /* transform <funcname> */
             const char *p = line + 9;
+            char tname[128];
+            size_t tn = 0;
             while (*p && isspace((unsigned char)*p)) p++;
             if (*p) {
-                arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_TRANSFORM, p, strlen(p));
+                while (*p && tn < sizeof(tname) - 1) tname[tn++] = *p++;
+                tname[tn] = '\0';
+                arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_TRANSFORM, tname, tn + 1);
+                arg_offset += (uint32_t)append_call_params(&instrs, &argbuf, &la, i + 1, &diags, (int)(i + 1));
             } else {
                 instr_entry_t e = { OP_TRANSFORM, 0, 0 };
                 instr_vec_push(&instrs, e);
@@ -599,14 +675,23 @@ fc_compile_result_t fc_compile(const char *source) {
         } else if (is_directive(line, "compensate")) {
             /* Recognized structural marker */
 
+        } else if (is_directive(line, "webhook")) {
+            /* Trigger documentation: what starts a workflow is the host
+             * application's concern (the playground's public deploy URLs and
+             * triggers), never an instruction. Compiles to nothing, exactly
+             * like `cron` and `schedule`. */
+
         } else if (is_plugin_call(line)) {
-            /* Any dotted name is a plugin call: http.post, email.send, ai.generate, … */
+            /* Any dotted name is a plugin call: MailApp.sendEmail,
+             * UrlFetchApp.fetch, Logger.log, … The arg blob is the name, a
+             * NUL, then key\0value\0 per following parameter line. */
             char name[128];
             size_t ni = 0;
             const char *p = line;
             while (*p && !isspace((unsigned char)*p) && ni < sizeof(name) - 1) name[ni++] = *p++;
             name[ni] = '\0';
-            arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_CALL, name, ni);
+            arg_offset = push_arg(&instrs, &argbuf, arg_offset, OP_CALL, name, ni + 1);
+            arg_offset += (uint32_t)append_call_params(&instrs, &argbuf, &la, i + 1, &diags, (int)(i + 1));
 
         } else if (is_structural_noise(line)) {
             /* Brace/bracket fragments of inline data literals. */

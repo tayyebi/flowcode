@@ -4,14 +4,14 @@
 #include "flowcode.h"
 
 /**
- * Register the built-in plugin stubs (http.*, email.*, crm.*, storage.*, form.*,
- * ai.*, memory.*, mqtt.*, webhook) into `registry`.
+ * Register the built-in plugin stubs (MailApp.sendEmail, MailApp.read,
+ * UrlFetchApp.fetch, Logger.log) into `registry`.
  *
  * The stubs perform no I/O: they log the call at DEBUG level and pass the
  * incoming token through unchanged. They exist so that workflows written
- * against the standard plugin names — the `samples/` directory in particular —
- * execute end to end with the shipped binary, before any real plugin library is
- * loaded with fc_plugins_load(). Loading a real plugin that exports the same
+ * against the standard app names execute end to end with the shipped binary,
+ * before a real handler is registered — the playground's runner replaces all
+ * four with its unix-socket bridge. Registering a real handler under the same
  * name replaces the stub.
  *
  * Returns 0 on success, -1 if any registration failed.

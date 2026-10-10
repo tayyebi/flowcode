@@ -57,7 +57,31 @@ typedef enum {
     FC_PLUGIN_ERR = 1
 } fc_plugin_result_t;
 
-typedef fc_plugin_result_t (*fc_plugin_call_fn)(const fc_token_t *in, fc_token_t *out);
+/** One key=value parameter compiled from the lines that follow a call or
+ * transform directive (e.g. the `to = "..."` under `MailApp.sendEmail`). */
+typedef struct fc_param_s {
+    const char *key;
+    const char *value;
+} fc_param_t;
+
+/**
+ * Everything a plugin invocation receives.
+ *
+ *   name    the dotted name the workflow called ("MailApp.sendEmail")
+ *   token   the current token; NULL when nothing has produced one yet
+ *   params  NULL-terminated array of compiled key=value parameters, or NULL
+ *           when the call had none — a missing param means "use the token"
+ *   host    the opaque pointer installed with fc_vm_set_host, for the
+ *           embedding program to route context (bridges, closures, ...)
+ */
+typedef struct fc_call_s {
+    const char *name;
+    const fc_token_t *token;
+    const fc_param_t *params;
+    void *host;
+} fc_call_t;
+
+typedef fc_plugin_result_t (*fc_plugin_call_fn)(const fc_call_t *call, fc_token_t *out);
 
 typedef struct {
     const char *name;
@@ -105,6 +129,9 @@ int fc_vm_run(fc_vm_t *vm);
  * alive for as long as the VM does. Pass NULL to clear.
  */
 void fc_vm_set_default_token(fc_vm_t *vm, const void *value, uint32_t size);
+
+/** Attach an opaque host pointer; delivered to every plugin via fc_call_t. */
+void fc_vm_set_host(fc_vm_t *vm, void *host);
 
 /** Inspect the last error after fc_vm_run returns non-zero. */
 const fc_error_t *fc_vm_last_error(const fc_vm_t *vm);

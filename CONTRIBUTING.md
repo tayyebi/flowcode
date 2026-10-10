@@ -355,7 +355,8 @@ Before submitting a PR, verify **all** of the following:
 - [ ] Commit messages are clear and descriptive.
 - [ ] **Docs are updated with the change.** Any change to the language, the
       compiler, the runtime, the CLI, or a plugin's behavior must be reflected
-      in the same PR — the wiki (`docs/`, a submodule) for user-facing
+      in the same PR — the wiki repository
+      (https://github.com/tayyebi/flowcode.wiki) for user-facing
       behavior, and this file or `README.md` for anything a contributor or
       builder needs to know. A change whose docs are now wrong is not done.
 
